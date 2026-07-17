@@ -2,370 +2,358 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const cors = require('cors');
 const express = require('express');
-const { Pool } = require('pg');
-const bcrypt = require('bcrypt'); // Librería para el cifrado seguro
+const { createClient } = require('@supabase/supabase-js');
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(cors());
-// Middleware para entender formatos JSON y formularios
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 app.use(express.static(__dirname));
 
-// Configuración de la conexión a la Base de Datos PostgreSQL / Supabase
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:unibocado2026@localhost:5432/uni_bocado';
+// Configuración del cliente oficial de Supabase (conecta por HTTPS, sin problemas de red)
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY
+);
 
-const db = new Pool({
-    connectionString: connectionString,
-    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
-});
+console.log('✅ Cliente de Supabase iniciado correctamente.');
 
-db.connect((err, client, release) => {
-    if (err) {
-        console.error('Error conectando a la base de datos PostgreSQL:', err);
-        return;
-    }
-    console.log('Conexión exitosa a la base de datos PostgreSQL.');
-    release();
-});
+// ==========================================
+// ENDPOINTS PARA ESTUDIANTES
+// ==========================================
 
-// Endpoint POST para procesar el registro seguro de estudiantes
+// Registro de estudiante
 app.post('/api/registrar', async (req, res) => {
     const { nombre, apellidos, correo, contrasena } = req.body;
 
-    // 1. Primero revisamos si el correo institucional ya existe en la BD
-    const buscarCorreo = 'SELECT * FROM estudiantes WHERE correo = $1';
-   
-    db.query(buscarCorreo, [correo], async (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Hubo un error interno en el servidor: ' + err.message });
+    // 1. Verificar si el correo ya existe
+    const { data: existe, error: errorBuscar } = await supabase
+        .from('estudiantes')
+        .select('id_estudiante')
+        .eq('correo', correo)
+        .maybeSingle();
+
+    if (errorBuscar) {
+        console.error('Error Supabase:', errorBuscar);
+        return res.status(500).json({ error: 'Error interno: ' + errorBuscar.message });
+    }
+    if (existe) {
+        return res.status(400).json({ error: 'Este correo ya está registrado en nuestra app.' });
+    }
+
+    // 2. Cifrar contraseña e insertar
+    try {
+        const contrasenaCifrada = await bcrypt.hash(contrasena, 10);
+        const { error: errorInsert } = await supabase
+            .from('estudiantes')
+            .insert({ nombre, apellidos, correo, contrasena: contrasenaCifrada });
+
+        if (errorInsert) {
+            console.error('Error Supabase:', errorInsert);
+            return res.status(500).json({ error: 'Error al guardar: ' + errorInsert.message });
         }
-
-        if (result.rows.length > 0) {
-            return res.status(400).json({ error: 'Este correo ya está registrado en nuestra app.' });
-        }
-
-        try {
-            // --- PROCESAMIENTO DE SEGURIDAD (HASH) ---
-            // Ciframos la contraseña pasándole 10 rondas de encriptación
-            const contrasenaCifrada = await bcrypt.hash(contrasena, 10);
-
-            // 2. Si el correo está disponible, guardamos el registro con la contraseña cifrada
-            const queryInsert = 'INSERT INTO estudiantes (nombre, apellidos, correo, contrasena) VALUES ($1, $2, $3, $4)';
-           
-            db.query(queryInsert, [nombre, apellidos, correo, contrasenaCifrada], (err, insertResult) => {
-                if (err) {
-                    console.error("Error en PostgreSQL:", err);
-                    return res.status(500).json({ error: 'Hubo un error al guardar en la base de datos: ' + err.message });
-                }
-                res.json({ mensaje: '¡Registro exitoso en Uni-Bocado!' });
-            });
-
-        } catch (errorCifrado) {
-            console.error("Error al cifrar contraseña:", errorCifrado);
-            return res.status(500).json({ error: 'Error de seguridad al procesar tus credenciales.' });
-        }
-    });
+        res.json({ mensaje: '¡Registro exitoso en Uni-Bocado!' });
+    } catch (e) {
+        res.status(500).json({ error: 'Error al cifrar la contraseña.' });
+    }
 });
 
-// Ruta para INICIAR SESIÓN
+// Login de estudiante
 app.post('/api/login', async (req, res) => {
     const { correo, contrasena } = req.body;
 
-    const buscarUsuario = 'SELECT * FROM estudiantes WHERE correo = $1';
-    db.query(buscarUsuario, [correo], async (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error en el servidor: ' + err.message });
-        }
-        if (result.rows.length === 0) {
-            return res.status(400).json({ error: 'Correo no registrado' });
-        }
+    const { data: usuario, error } = await supabase
+        .from('estudiantes')
+        .select('*')
+        .eq('correo', correo)
+        .maybeSingle();
 
-        try {
-            const usuario = result.rows[0];
-            const contrasenaCorrecta = await bcrypt.compare(contrasena, usuario.contrasena);
+    if (error) return res.status(500).json({ error: 'Error en el servidor: ' + error.message });
+    if (!usuario) return res.status(400).json({ error: 'Correo no registrado' });
 
-            if (!contrasenaCorrecta) {
-                return res.status(400).json({ error: 'Contraseña incorrecta' });
-            }
+    try {
+        const contrasenaCorrecta = await bcrypt.compare(contrasena, usuario.contrasena);
+        if (!contrasenaCorrecta) return res.status(400).json({ error: 'Contraseña incorrecta' });
 
-            res.json({ 
-                mensaje: '¡Bienvenido a Uni-Bocado!',
-                usuario: { id: usuario.id_estudiante, nombre: usuario.nombre, correo: usuario.correo }
-            });
-        } catch (errorLogin) {
-            console.error("Error en el login:", errorLogin);
-            return res.status(500).json({ error: 'Error interno al verificar tus credenciales.' });
-        }
-    });
+        res.json({
+            mensaje: '¡Bienvenido a Uni-Bocado!',
+            usuario: { id: usuario.id_estudiante, nombre: usuario.nombre, correo: usuario.correo }
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Error al verificar credenciales.' });
+    }
 });
 
 // ==========================================
-// ENDPOINTS PARA EL VENDEDOR (EMPLEADO LOCAL)
+// ENDPOINTS PARA VENDEDOR (EMPLEADO LOCAL)
 // ==========================================
 
 // Login del vendedor
 app.post('/api/vendedor/login', async (req, res) => {
     const { correo, contrasena } = req.body;
 
-    const buscarVendedor = 'SELECT * FROM empleados_locales WHERE correo = $1';
-    db.query(buscarVendedor, [correo], async (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error en el servidor: ' + err.message });
-        }
-        if (result.rows.length === 0) {
-            return res.status(400).json({ error: 'Correo de empleado no registrado' });
-        }
+    const { data: empleado, error } = await supabase
+        .from('empleados_locales')
+        .select('*')
+        .eq('correo', correo)
+        .maybeSingle();
 
-        try {
-            const empleado = result.rows[0];
-            const contrasenaCorrecta = await bcrypt.compare(contrasena, empleado.contrasena);
+    if (error) return res.status(500).json({ error: 'Error en el servidor: ' + error.message });
+    if (!empleado) return res.status(400).json({ error: 'Correo de empleado no registrado' });
 
-            if (!contrasenaCorrecta) {
-                return res.status(400).json({ error: 'Contraseña incorrecta' });
-            }
+    try {
+        const contrasenaCorrecta = await bcrypt.compare(contrasena, empleado.contrasena);
+        if (!contrasenaCorrecta) return res.status(400).json({ error: 'Contraseña incorrecta' });
 
-            res.json({
-                mensaje: '¡Bienvenido al Panel de Control!',
-                empleado: { id: empleado.id_empleado, nombre: empleado.nombre_completo, correo: empleado.correo, id_local: empleado.id_local }
-            });
-        } catch (errorLogin) {
-            console.error("Error en el login del vendedor:", errorLogin);
-            return res.status(500).json({ error: 'Error interno al verificar tus credenciales.' });
-        }
-    });
+        res.json({
+            mensaje: '¡Bienvenido al Panel de Control!',
+            empleado: { id: empleado.id_empleado, nombre: empleado.nombre_completo, correo: empleado.correo, id_local: empleado.id_local }
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Error al verificar credenciales.' });
+    }
 });
 
 // Obtener pedidos del local del vendedor
-app.get('/api/vendedor/pedidos', (req, res) => {
+app.get('/api/vendedor/pedidos', async (req, res) => {
     const id_local = req.query.id_local;
-    if (!id_local) {
-        return res.status(400).json({ error: 'Falta especificar el id_local' });
+    if (!id_local) return res.status(400).json({ error: 'Falta especificar el id_local' });
+
+    const { data, error } = await supabase
+        .from('pedidos')
+        .select('*, estudiantes(nombre, apellidos)')
+        .eq('id_local', id_local)
+        .order('fecha_creacion', { ascending: false });
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al obtener pedidos: ' + error.message });
     }
 
-    const query = `
-        SELECT p.*, e.nombre, e.apellidos 
-        FROM pedidos p 
-        JOIN estudiantes e ON p.id_estudiante = e.id_estudiante 
-        WHERE p.id_local = $1 
-        ORDER BY p.fecha_creacion DESC`;
+    // Aplanar el objeto anidado de estudiantes para mantener compatibilidad con el frontend
+    const resultado = data.map(p => ({
+        ...p,
+        nombre: p.estudiantes?.nombre,
+        apellidos: p.estudiantes?.apellidos,
+        estudiantes: undefined
+    }));
 
-    db.query(query, [id_local], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener pedidos: ' + err.message });
-        }
-        res.json(result.rows);
-    });
+    res.json(resultado);
 });
 
-// Obtener detalles de un pedido específico (los productos comprados)
-app.get('/api/vendedor/pedidos/:id/detalles', (req, res) => {
+// Obtener detalles de un pedido
+app.get('/api/vendedor/pedidos/:id/detalles', async (req, res) => {
     const id_pedido = req.params.id;
 
-    const query = `
-        SELECT dp.*, pr.nombre_platillo, pr.precio 
-        FROM detalle_pedidos dp 
-        JOIN productos pr ON dp.id_producto = pr.id_product 
-        WHERE dp.id_pedido = $1`;
+    const { data, error } = await supabase
+        .from('detalle_pedidos')
+        .select('*, productos(nombre_platillo, precio)')
+        .eq('id_pedido', id_pedido);
 
-    db.query(query, [id_pedido], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener detalles del pedido: ' + err.message });
-        }
-        res.json(result.rows);
-    });
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al obtener detalles: ' + error.message });
+    }
+
+    // Aplanar el objeto anidado de productos
+    const resultado = data.map(d => ({
+        ...d,
+        nombre_platillo: d.productos?.nombre_platillo,
+        precio: d.productos?.precio,
+        productos: undefined
+    }));
+
+    res.json(resultado);
 });
 
 // Actualizar estado del pedido
-app.put('/api/vendedor/pedidos/:id/estado', (req, res) => {
+app.put('/api/vendedor/pedidos/:id/estado', async (req, res) => {
     const id_pedido = req.params.id;
-    const { estado } = req.body; // 'En cocina', 'Listo', 'Entregado'
+    const { estado } = req.body;
 
-    const query = 'UPDATE pedidos SET estado_actual = $1 WHERE id_pedido = $2';
-    db.query(query, [estado, id_pedido], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al actualizar el estado del pedido: ' + err.message });
-        }
-        res.json({ mensaje: 'Estado de pedido actualizado con éxito.' });
-    });
+    const { error } = await supabase
+        .from('pedidos')
+        .update({ estado_actual: estado })
+        .eq('id_pedido', id_pedido);
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al actualizar estado: ' + error.message });
+    }
+    res.json({ mensaje: 'Estado de pedido actualizado con éxito.' });
 });
 
-// Obtener productos de un local
-app.get('/api/vendedor/productos', (req, res) => {
+// Obtener productos de un local (panel vendedor)
+app.get('/api/vendedor/productos', async (req, res) => {
     const id_local = req.query.id_local;
-    if (!id_local) {
-        return res.status(400).json({ error: 'Falta especificar el id_local' });
-    }
+    if (!id_local) return res.status(400).json({ error: 'Falta especificar el id_local' });
 
-    const query = 'SELECT * FROM productos WHERE id_local = $1';
-    db.query(query, [id_local], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener productos: ' + err.message });
-        }
-        res.json(result.rows);
-    });
+    const { data, error } = await supabase
+        .from('productos')
+        .select('*')
+        .eq('id_local', id_local);
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al obtener productos: ' + error.message });
+    }
+    res.json(data);
 });
 
 // Agregar un nuevo producto
-app.post('/api/vendedor/productos', (req, res) => {
+app.post('/api/vendedor/productos', async (req, res) => {
     const { id_local, id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible } = req.body;
 
-    const query = 'INSERT INTO productos (id_local, id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id_product';
-    db.query(query, [id_local, id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al guardar el producto: ' + err.message });
-        }
-        res.json({ mensaje: 'Producto agregado con éxito.', id_product: result.rows[0].id_product });
-    });
+    const { data, error } = await supabase
+        .from('productos')
+        .insert({ id_local, id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible })
+        .select('id_product')
+        .single();
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al guardar el producto: ' + error.message });
+    }
+    res.json({ mensaje: 'Producto agregado con éxito.', id_product: data.id_product });
 });
 
 // Modificar un producto existente
-app.put('/api/vendedor/productos/:id', (req, res) => {
+app.put('/api/vendedor/productos/:id', async (req, res) => {
     const id_product = req.params.id;
     const { id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible } = req.body;
 
-    const query = 'UPDATE productos SET id_categoria = $1, nombre_platillo = $2, descripcion = $3, precio = $4, foto_url = $5, disponible = $6 WHERE id_product = $7';
-    db.query(query, [id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible, id_product], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al actualizar el producto: ' + err.message });
-        }
-        res.json({ mensaje: 'Producto actualizado con éxito.' });
-    });
+    const { error } = await supabase
+        .from('productos')
+        .update({ id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible })
+        .eq('id_product', id_product);
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al actualizar el producto: ' + error.message });
+    }
+    res.json({ mensaje: 'Producto actualizado con éxito.' });
 });
 
-// Cambiar disponibilidad rápida de un producto
-app.put('/api/vendedor/productos/:id/disponibilidad', (req, res) => {
+// Cambiar disponibilidad de un producto
+app.put('/api/vendedor/productos/:id/disponibilidad', async (req, res) => {
     const id_product = req.params.id;
-    const { disponible } = req.body; // 1 o 0
+    const { disponible } = req.body;
 
-    const query = 'UPDATE productos SET disponible = $1 WHERE id_product = $2';
-    db.query(query, [disponible, id_product], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al actualizar disponibilidad: ' + err.message });
-        }
-        res.json({ mensaje: 'Disponibilidad actualizada.' });
-    });
+    const { error } = await supabase
+        .from('productos')
+        .update({ disponible })
+        .eq('id_product', id_product);
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al actualizar disponibilidad: ' + error.message });
+    }
+    res.json({ mensaje: 'Disponibilidad actualizada.' });
 });
 
-
 // ==========================================
-// ENDPOINTS PARA EL ESTUDIANTE (PEDIDOS REALES)
+// ENDPOINTS PARA ESTUDIANTE (PEDIDOS REALES)
 // ==========================================
 
-// Obtener locales de comida (para elegir lugar)
-app.get('/api/locales', (req, res) => {
-    db.query('SELECT * FROM establecimientos', (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener locales: ' + err.message });
-        }
-        res.json(result.rows);
-    });
+// Obtener todos los locales
+app.get('/api/locales', async (req, res) => {
+    const { data, error } = await supabase.from('establecimientos').select('*');
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al obtener locales: ' + error.message });
+    }
+    res.json(data);
 });
 
-// Obtener productos de un local específico para el menú del estudiante
-app.get('/api/locales/:id/productos', (req, res) => {
+// Obtener productos disponibles de un local (menú del estudiante)
+app.get('/api/locales/:id/productos', async (req, res) => {
     const id_local = req.params.id;
-    const query = 'SELECT * FROM productos WHERE id_local = $1 AND disponible = 1';
-    db.query(query, [id_local], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener productos: ' + err.message });
-        }
-        res.json(result.rows);
-    });
+
+    const { data, error } = await supabase
+        .from('productos')
+        .select('*')
+        .eq('id_local', id_local)
+        .eq('disponible', 1);
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al obtener productos: ' + error.message });
+    }
+    res.json(data);
 });
 
 // Registrar un pedido real
-app.post('/api/pedidos', (req, res) => {
+app.post('/api/pedidos', async (req, res) => {
     const { id_estudiante, id_local, total_pagar, metodo_pago, articulos } = req.body;
 
     if (!id_estudiante || !id_local || !total_pagar || !metodo_pago || !articulos || articulos.length === 0) {
         return res.status(400).json({ error: 'Datos de pedido incompletos.' });
     }
 
-    db.connect((err, client, release) => {
-        if (err) {
-            console.error("Error al obtener cliente para transacción:", err);
-            return res.status(500).json({ error: 'Error al obtener cliente para transacción: ' + err.message });
-        }
+    // 1. Insertar el pedido principal
+    const { data: pedidoData, error: pedidoError } = await supabase
+        .from('pedidos')
+        .insert({ id_estudiante, id_local, total_pagar, metodo_pago, estado_actual: 'En cocina' })
+        .select('id_pedido')
+        .single();
 
-        const rollback = (error, customMsg) => {
-            client.query('ROLLBACK', (rollbackErr) => {
-                release();
-                console.error(customMsg, error);
-                res.status(500).json({ error: customMsg + ' ' + error.message });
-            });
-        };
+    if (pedidoError) {
+        console.error('Error al insertar pedido:', pedidoError);
+        return res.status(500).json({ error: 'Error al guardar el pedido: ' + pedidoError.message });
+    }
 
-        client.query('BEGIN', (err) => {
-            if (err) return rollback(err, 'Error al iniciar transacción.');
+    const id_pedido = pedidoData.id_pedido;
 
-            const queryPedido = 'INSERT INTO pedidos (id_estudiante, id_local, total_pagar, metodo_pago, estado_actual) VALUES ($1, $2, $3, $4, $5) RETURNING id_pedido';
-            client.query(queryPedido, [id_estudiante, id_local, total_pagar, metodo_pago, 'En cocina'], (err, result) => {
-                if (err) return rollback(err, 'Error al guardar el pedido.');
+    // 2. Insertar el desglose de productos
+    const detalles = articulos.map(art => ({
+        id_pedido,
+        id_producto: art.id_producto,
+        cantidad: art.cantidad,
+        subtotal: art.subtotal
+    }));
 
-                const id_pedido = result.rows[0].id_pedido;
+    const { error: detalleError } = await supabase
+        .from('detalle_pedidos')
+        .insert(detalles);
 
-                // Generar inserción múltiple en PostgreSQL dinámicamente
-                const queryValues = [];
-                const valuePlaceholders = [];
-                let counter = 1;
+    if (detalleError) {
+        // Compensar: eliminar el pedido ya guardado si fallan los detalles
+        await supabase.from('pedidos').delete().eq('id_pedido', id_pedido);
+        console.error('Error al insertar detalles:', detalleError);
+        return res.status(500).json({ error: 'Error al guardar el desglose: ' + detalleError.message });
+    }
 
-                articulos.forEach((art) => {
-                    valuePlaceholders.push(`($${counter}, $${counter+1}, $${counter+2}, $${counter+3})`);
-                    queryValues.push(id_pedido, art.id_producto, art.cantidad, art.subtotal);
-                    counter += 4;
-                });
-
-                const queryDetalle = `INSERT INTO detalle_pedidos (id_pedido, id_producto, cantidad, subtotal) VALUES ${valuePlaceholders.join(', ')}`;
-
-                client.query(queryDetalle, queryValues, (err) => {
-                    if (err) return rollback(err, 'Error al guardar el desglose de productos.');
-
-                    client.query('COMMIT', (err) => {
-                        if (err) return rollback(err, 'Error al finalizar el pedido.');
-                        
-                        release();
-                        res.json({ mensaje: '¡Pedido guardado con éxito!', id_pedido: id_pedido });
-                    });
-                });
-            });
-        });
-    });
+    res.json({ mensaje: '¡Pedido guardado con éxito!', id_pedido });
 });
 
-// Consultar el estado actual de UN pedido (para el polling del cliente)
-app.get('/api/pedido/:id/estado', (req, res) => {
+// Consultar el estado actual de un pedido (polling del cliente)
+app.get('/api/pedido/:id/estado', async (req, res) => {
     const id_pedido = req.params.id;
-    db.query('SELECT estado_actual FROM pedidos WHERE id_pedido = $1', [id_pedido], (err, result) => {
-        if (err) {
-            console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al consultar estado: ' + err.message });
-        }
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Pedido no encontrado.' });
-        res.json({ estado_actual: result.rows[0].estado_actual });
-    });
+
+    const { data, error } = await supabase
+        .from('pedidos')
+        .select('estado_actual')
+        .eq('id_pedido', id_pedido)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al consultar estado: ' + error.message });
+    }
+    if (!data) return res.status(404).json({ error: 'Pedido no encontrado.' });
+
+    res.json({ estado_actual: data.estado_actual });
 });
 
-// Exportar la app para Vercel Serverless
+// Exportar app para Vercel Serverless
 module.exports = app;
 
-// Encendido del servidor para desarrollo local (solo si no se ejecuta en Vercel como función serverless)
+// Servidor local (solo en desarrollo)
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 5500;
     app.listen(PORT, () => {
-        console.log(`Servidor backend corriendo en http://localhost:${PORT}`);
+        console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
     });
 }
