@@ -40,7 +40,7 @@ app.post('/api/registrar', async (req, res) => {
     db.query(buscarCorreo, [correo], async (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Hubo un error interno en el servidor.' });
+            return res.status(500).json({ error: 'Hubo un error interno en el servidor: ' + err.message });
         }
 
         if (result.rows.length > 0) {
@@ -58,7 +58,7 @@ app.post('/api/registrar', async (req, res) => {
             db.query(queryInsert, [nombre, apellidos, correo, contrasenaCifrada], (err, insertResult) => {
                 if (err) {
                     console.error("Error en PostgreSQL:", err);
-                    return res.status(500).json({ error: 'Hubo un error al guardar en la base de datos.' });
+                    return res.status(500).json({ error: 'Hubo un error al guardar en la base de datos: ' + err.message });
                 }
                 res.json({ mensaje: '¡Registro exitoso en Uni-Bocado!' });
             });
@@ -78,7 +78,7 @@ app.post('/api/login', async (req, res) => {
     db.query(buscarUsuario, [correo], async (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error en el servidor' });
+            return res.status(500).json({ error: 'Error en el servidor: ' + err.message });
         }
         if (result.rows.length === 0) {
             return res.status(400).json({ error: 'Correo no registrado' });
@@ -115,7 +115,7 @@ app.post('/api/vendedor/login', async (req, res) => {
     db.query(buscarVendedor, [correo], async (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error en el servidor' });
+            return res.status(500).json({ error: 'Error en el servidor: ' + err.message });
         }
         if (result.rows.length === 0) {
             return res.status(400).json({ error: 'Correo de empleado no registrado' });
@@ -157,7 +157,7 @@ app.get('/api/vendedor/pedidos', (req, res) => {
     db.query(query, [id_local], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener pedidos.' });
+            return res.status(500).json({ error: 'Error al obtener pedidos: ' + err.message });
         }
         res.json(result.rows);
     });
@@ -176,7 +176,7 @@ app.get('/api/vendedor/pedidos/:id/detalles', (req, res) => {
     db.query(query, [id_pedido], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener detalles del pedido.' });
+            return res.status(500).json({ error: 'Error al obtener detalles del pedido: ' + err.message });
         }
         res.json(result.rows);
     });
@@ -191,7 +191,7 @@ app.put('/api/vendedor/pedidos/:id/estado', (req, res) => {
     db.query(query, [estado, id_pedido], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al actualizar el estado del pedido.' });
+            return res.status(500).json({ error: 'Error al actualizar el estado del pedido: ' + err.message });
         }
         res.json({ mensaje: 'Estado de pedido actualizado con éxito.' });
     });
@@ -208,7 +208,7 @@ app.get('/api/vendedor/productos', (req, res) => {
     db.query(query, [id_local], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener productos.' });
+            return res.status(500).json({ error: 'Error al obtener productos: ' + err.message });
         }
         res.json(result.rows);
     });
@@ -222,7 +222,7 @@ app.post('/api/vendedor/productos', (req, res) => {
     db.query(query, [id_local, id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al guardar el producto.' });
+            return res.status(500).json({ error: 'Error al guardar el producto: ' + err.message });
         }
         res.json({ mensaje: 'Producto agregado con éxito.', id_product: result.rows[0].id_product });
     });
@@ -237,7 +237,7 @@ app.put('/api/vendedor/productos/:id', (req, res) => {
     db.query(query, [id_categoria, nombre_platillo, descripcion, precio, foto_url, disponible, id_product], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al actualizar el producto.' });
+            return res.status(500).json({ error: 'Error al actualizar el producto: ' + err.message });
         }
         res.json({ mensaje: 'Producto actualizado con éxito.' });
     });
@@ -252,7 +252,7 @@ app.put('/api/vendedor/productos/:id/disponibilidad', (req, res) => {
     db.query(query, [disponible, id_product], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al actualizar disponibilidad.' });
+            return res.status(500).json({ error: 'Error al actualizar disponibilidad: ' + err.message });
         }
         res.json({ mensaje: 'Disponibilidad actualizada.' });
     });
@@ -268,7 +268,7 @@ app.get('/api/locales', (req, res) => {
     db.query('SELECT * FROM establecimientos', (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener locales.' });
+            return res.status(500).json({ error: 'Error al obtener locales: ' + err.message });
         }
         res.json(result.rows);
     });
@@ -281,7 +281,7 @@ app.get('/api/locales/:id/productos', (req, res) => {
     db.query(query, [id_local], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al obtener productos.' });
+            return res.status(500).json({ error: 'Error al obtener productos: ' + err.message });
         }
         res.json(result.rows);
     });
@@ -298,14 +298,14 @@ app.post('/api/pedidos', (req, res) => {
     db.connect((err, client, release) => {
         if (err) {
             console.error("Error al obtener cliente para transacción:", err);
-            return res.status(500).json({ error: 'Error al procesar el pedido.' });
+            return res.status(500).json({ error: 'Error al obtener cliente para transacción: ' + err.message });
         }
 
         const rollback = (error, customMsg) => {
             client.query('ROLLBACK', (rollbackErr) => {
                 release();
                 console.error(customMsg, error);
-                res.status(500).json({ error: customMsg });
+                res.status(500).json({ error: customMsg + ' ' + error.message });
             });
         };
 
@@ -352,7 +352,7 @@ app.get('/api/pedido/:id/estado', (req, res) => {
     db.query('SELECT estado_actual FROM pedidos WHERE id_pedido = $1', [id_pedido], (err, result) => {
         if (err) {
             console.error("Error en PostgreSQL:", err);
-            return res.status(500).json({ error: 'Error al consultar estado.' });
+            return res.status(500).json({ error: 'Error al consultar estado: ' + err.message });
         }
         if (result.rows.length === 0) return res.status(404).json({ error: 'Pedido no encontrado.' });
         res.json({ estado_actual: result.rows[0].estado_actual });
