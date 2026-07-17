@@ -609,6 +609,7 @@ document.getElementById('btnLogout').addEventListener('click', () => {
     }).then(r => {
         if (r.isConfirmed) {
             localStorage.removeItem('usuario');
+            localStorage.removeItem('pedidoActual');
             window.location.href = 'index.html';
         }
     });
@@ -879,6 +880,7 @@ document.getElementById('btnConfirmar').addEventListener('click', async () => {
 
         if (resp.ok) {
             pedidoActual = { id_pedido: resultado.id_pedido, total, metodoPago, local: localSeleccionado.nombre_negocio };
+            localStorage.setItem('pedidoActual', JSON.stringify(pedidoActual));
             carrito = {};
             actualizarCartBar();
             irA('estado');
@@ -957,6 +959,7 @@ function iniciarPollingEstado(id_pedido) {
                 mostrarEstadoPedido(data.estado_actual);
                 if (data.estado_actual === 'Entregado') {
                     clearInterval(intervalEstado);
+                    localStorage.removeItem('pedidoActual');
                 }
             }
         } catch (e) { /* silencioso */ }
@@ -966,16 +969,57 @@ function iniciarPollingEstado(id_pedido) {
 document.getElementById('btnNuevoPedido').addEventListener('click', () => {
     if (intervalEstado) clearInterval(intervalEstado);
     pedidoActual = null;
+    localStorage.removeItem('pedidoActual');
     irA('home');
     cargarLocales();
     document.getElementById('btnConfirmar').disabled = false;
     document.getElementById('btnConfirmar').textContent = 'Confirmar pedido';
 });
 
+// Función para verificar si hay un pedido activo guardado al iniciar
+async function verificarPedidoActivo(id_pedido) {
+    try {
+        const resp = await fetch(`/api/pedido/${id_pedido}/estado`);
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.estado_actual !== 'Entregado') {
+                // Si aún sigue preparándose o listo, vamos directo a la vista de estado y reanudamos el polling
+                irA('estado');
+                mostrarEstadoPedido(data.estado_actual);
+                iniciarPollingEstado(id_pedido);
+            } else {
+                // Si ya fue entregado, lo borramos y cargamos los locales
+                localStorage.removeItem('pedidoActual');
+                cargarLocales();
+            }
+        } else {
+            // Si el servidor da error o no existe, borramos y cargamos locales
+            localStorage.removeItem('pedidoActual');
+            cargarLocales();
+        }
+    } catch (e) {
+        // En caso de fallo de red temporal, asumimos que sigue activo y mostramos el último estado guardado
+        irA('estado');
+        mostrarEstadoPedido('En cocina');
+        iniciarPollingEstado(id_pedido);
+    }
+}
+
 // ─────────────────────────────────────────
 // INICIO
 // ─────────────────────────────────────────
-cargarLocales();
+const pedidoGuardado = localStorage.getItem('pedidoActual');
+if (pedidoGuardado) {
+    try {
+        pedidoActual = JSON.parse(pedidoGuardado);
+        verificarPedidoActivo(pedidoActual.id_pedido);
+    } catch (e) {
+        localStorage.removeItem('pedidoActual');
+        cargarLocales();
+    }
+} else {
+    cargarLocales();
+}
 </script>
 </body>
 </html>
