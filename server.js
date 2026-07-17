@@ -1,8 +1,8 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const cors = require('cors');
 const express = require('express');
 const { Pool } = require('pg');
-const path = require('path');
 const bcrypt = require('bcrypt'); // Librería para el cifrado seguro
 
 const app = express();
