@@ -98,6 +98,38 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+// Obtener el pedido activo de un estudiante (si existe)
+app.get('/api/estudiantes/:id/pedido-activo', async (req, res) => {
+    const id_estudiante = req.params.id;
+
+    const { data, error } = await supabase
+        .from('pedidos')
+        .select('*, establecimientos(nombre_negocio)')
+        .eq('id_estudiante', id_estudiante)
+        .in('estado_actual', ['En cocina', 'Listo'])
+        .order('fecha_creacion', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error Supabase:', error);
+        return res.status(500).json({ error: 'Error al buscar pedido activo: ' + error.message });
+    }
+
+    if (data) {
+        const pedido = {
+            id_pedido: data.id_pedido,
+            total: parseFloat(data.total_pagar),
+            metodoPago: data.metodo_pago,
+            local: data.establecimientos?.nombre_negocio || 'Cafetería',
+            estado_actual: data.estado_actual
+        };
+        return res.json({ pedido });
+    }
+
+    res.json({ pedido: null });
+});
+
 // ==========================================
 // ENDPOINTS PARA VENDEDOR (EMPLEADO LOCAL)
 // ==========================================

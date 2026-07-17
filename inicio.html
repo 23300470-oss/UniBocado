@@ -425,6 +425,9 @@
             <span class="header-title" id="headerTitle">Uni-Bocado</span>
         </div>
         <div class="header-right">
+            <button class="status-badge-btn" id="btnStatusHeader" style="display:none; background: none; border: none; font-size: 18px; color: #fff; cursor: pointer; margin-right: 8px; vertical-align: middle;" title="Ver estatus de pedido">
+                🛵<span style="font-size: 9px; background: #E67E22; color: #fff; padding: 2px 6px; border-radius: 10px; font-weight: 700; margin-left: 2px; vertical-align: middle;">Activo</span>
+            </button>
             <button class="cart-badge-btn" id="btnCartHeader" style="display:none" title="Ver carrito">
                 🛒 <span class="cart-count" id="cartCountHeader">0</span>
             </button>
@@ -604,6 +607,25 @@ document.getElementById('btnBack').addEventListener('click', () => {
     if (vistaActual === 'checkout') { irA('menu'); return; }
     if (vistaActual === 'menu') { irA('home'); return; }
 });
+
+// Controlador para el botón de pedido activo en el header
+document.getElementById('btnStatusHeader').addEventListener('click', () => {
+    if (pedidoActual) {
+        irA('estado');
+        mostrarEstadoPedido(pedidoActual.estado_actual || 'En cocina');
+        iniciarPollingEstado(pedidoActual.id_pedido);
+    }
+});
+
+// Función para mostrar/ocultar el indicador de pedido activo
+function actualizarStatusHeader() {
+    const btnStatus = document.getElementById('btnStatusHeader');
+    if (pedidoActual && (pedidoActual.estado_actual === 'En cocina' || pedidoActual.estado_actual === 'Listo')) {
+        btnStatus.style.display = 'inline-block';
+    } else {
+        btnStatus.style.display = 'none';
+    }
+}
 
 // ─────────────────────────────────────────
 // LOGOUT
@@ -891,8 +913,9 @@ document.getElementById('btnConfirmar').addEventListener('click', async () => {
         const resultado = await resp.json();
 
         if (resp.ok) {
-            pedidoActual = { id_pedido: resultado.id_pedido, total, metodoPago, local: localSeleccionado.nombre_negocio };
+            pedidoActual = { id_pedido: resultado.id_pedido, total, metodoPago, local: localSeleccionado.nombre_negocio, estado_actual: 'En cocina' };
             localStorage.setItem('pedidoActual', JSON.stringify(pedidoActual));
+            actualizarStatusHeader();
             carrito = {};
             actualizarCartBar();
             irA('estado');
@@ -968,10 +991,19 @@ function iniciarPollingEstado(id_pedido) {
             const resp = await fetch(`/api/pedido/${id_pedido}/estado`);
             if (resp.ok) {
                 const data = await resp.json();
+                
+                // Actualizar el estado del pedido actual en memoria y almacenamiento local
+                if (pedidoActual) {
+                    pedidoActual.estado_actual = data.estado_actual;
+                    localStorage.setItem('pedidoActual', JSON.stringify(pedidoActual));
+                }
+                actualizarStatusHeader();
+
                 mostrarEstadoPedido(data.estado_actual);
                 if (data.estado_actual === 'Entregado') {
                     clearInterval(intervalEstado);
                     localStorage.removeItem('pedidoActual');
+                    actualizarStatusHeader();
                 }
             }
         } catch (e) { /* silencioso */ }
@@ -982,6 +1014,7 @@ document.getElementById('btnNuevoPedido').addEventListener('click', () => {
     if (intervalEstado) clearInterval(intervalEstado);
     pedidoActual = null;
     localStorage.removeItem('pedidoActual');
+    actualizarStatusHeader();
     irA('home');
     cargarLocales();
     document.getElementById('btnConfirmar').disabled = false;
@@ -995,6 +1028,12 @@ async function verificarPedidoActivo(id_pedido) {
         if (resp.ok) {
             const data = await resp.json();
             if (data.estado_actual !== 'Entregado') {
+                if (pedidoActual) {
+                    pedidoActual.estado_actual = data.estado_actual;
+                    localStorage.setItem('pedidoActual', JSON.stringify(pedidoActual));
+                }
+                actualizarStatusHeader();
+
                 // Si aún sigue preparándose o listo, vamos directo a la vista de estado y reanudamos el polling
                 irA('estado');
                 mostrarEstadoPedido(data.estado_actual);
@@ -1002,36 +1041,71 @@ async function verificarPedidoActivo(id_pedido) {
             } else {
                 // Si ya fue entregado, lo borramos y cargamos los locales
                 localStorage.removeItem('pedidoActual');
+                actualizarStatusHeader();
                 cargarLocales();
             }
         } else {
             // Si el servidor da error o no existe, borramos y cargamos locales
             localStorage.removeItem('pedidoActual');
+            actualizarStatusHeader();
             cargarLocales();
         }
     } catch (e) {
         // En caso de fallo de red temporal, asumimos que sigue activo y mostramos el último estado guardado
+        actualizarStatusHeader();
         irA('estado');
         mostrarEstadoPedido('En cocina');
         iniciarPollingEstado(id_pedido);
     }
 }
 
+// Buscar en la base de datos si el estudiante tiene un pedido activo (para cuando inicia sesión de cero)
+async function buscarPedidoActivoEnBD() {
+    try {
+        const resp = await fetch(`/api/estudiantes/${usuario.id}/pedido-activo`);
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.pedido) {
+                pedidoActual = data.pedido;
+                localStorage.setItem('pedidoActual', JSON.stringify(pedidoActual));
+                actualizarStatusHeader();
+                
+                // Vamos directo al estado y reanudamos polling
+                irA('estado');
+                mostrarEstadoPedido(pedidoActual.estado_actual);
+                iniciarPollingEstado(pedidoActual.id_pedido);
+            } else {
+                localStorage.removeItem('pedidoActual');
+                actualizarStatusHeader();
+                cargarLocales();
+            }
+        } else {
+            cargarLocales();
+        }
+    } catch (e) {
+        cargarLocales();
+    }
+}
+
 // ─────────────────────────────────────────
 // INICIO
 // ─────────────────────────────────────────
-const pedidoGuardado = localStorage.getItem('pedidoActual');
-if (pedidoGuardado) {
-    try {
-        pedidoActual = JSON.parse(pedidoGuardado);
-        verificarPedidoActivo(pedidoActual.id_pedido);
-    } catch (e) {
-        localStorage.removeItem('pedidoActual');
-        cargarLocales();
+async function inicializarApp() {
+    const pedidoGuardado = localStorage.getItem('pedidoActual');
+    if (pedidoGuardado) {
+        try {
+            pedidoActual = JSON.parse(pedidoGuardado);
+            await verificarPedidoActivo(pedidoActual.id_pedido);
+        } catch (e) {
+            localStorage.removeItem('pedidoActual');
+            await buscarPedidoActivoEnBD();
+        }
+    } else {
+        await buscarPedidoActivoEnBD();
     }
-} else {
-    cargarLocales();
 }
+
+inicializarApp();
 </script>
 </body>
 </html>
