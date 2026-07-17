@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uni-Bocado - Bienvenida</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #D7D2C8;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .wrapper {
+            width: 360px;
+            height: 640px;
+            background-color: #F5F2EB;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            position: relative;
+            padding: 40px 20px;
+            box-sizing: border-box;
+            border-radius: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .logo-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 40px;
+            margin-bottom: 50px;
+            margin-left: 40px;
+        }
+
+        .logo-img {
+            width: 95%;         
+            height: auto;
+        }
+
+        .button-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            z-index: 10;
+        }
+
+        .vendedor-link {
+            color: #553A26;
+            font-family: 'Georgia', serif;
+            font-size: 14px;
+            text-decoration: underline;
+            margin-top: 10px;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .btn {
+            width: 80%;
+            padding: 13px 0;
+            background-color: #6F4E37;
+            color: #FFFFFF;
+            font-size: 19px;
+            font-family: 'Georgia', serif;
+            text-align: center;
+            border: 2px solid #553A26;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: inset 0 0 0 2px #F5F2EB;
+        }
+
+        .mascota-container {
+            position: absolute;
+            bottom: -20px;
+            right: -5px;
+            width: 160px;     
+            z-index: 99;       
+            pointer-events: none;
+        }
+
+        .mascota-img {
+            width: 120%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="logo-container">
+            <img src="logo_completo.png" alt="Uni-Bocado Logo" class="logo-img">
+        </div>
+        <div class="button-container">
+            <div class="btn" onclick="window.location.href='login.html'">Iniciar sesion</div>
+            <div class="btn" onclick="window.location.href='registro.html'">Crear cuenta</div>
+            <a href="login_vendedor.html" class="vendedor-link">Acceso para Vendedores</a>
+        </div>
+        <div class="mascota-container">
+            <img src="ratoncito.png" alt="Ratoncito Chef" class="mascota-img">
+        </div>
+    </div>
+</body>
+</html>

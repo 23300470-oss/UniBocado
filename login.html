@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uni-Bocado - Iniciar Sesión</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #D7D2C8;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .wrapper {
+            width: 360px;
+            height: 640px;
+            background-color: #F5F2EB;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            position: relative;
+            padding: 30px 20px;
+            box-sizing: border-box;
+            border-radius: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .back-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6F4E37;
+            font-weight: bold;
+            z-index: 10;
+        }
+
+        .logo-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            margin-left: 40px;
+        }
+
+        .logo-img {
+            width: 95%;
+            height: auto;
+        }
+
+        .form-container {
+            width: 85%;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        label {
+            color: #000000;
+            font-family: 'Georgia', serif;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .input-box {
+            width: 100%;
+            padding: 12px;
+            background-color: #84593C;
+            border: 2px solid #553A26;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 16px;
+            color: #FFFFFF;
+            margin-bottom: 18px;
+            outline: none;
+            box-shadow: inset 0 0 0 2px #F5F2EB;
+        }
+
+        .forgot-link {
+            color: #000000;
+            font-family: 'Georgia', serif;
+            font-size: 16px;
+            text-decoration: none;
+            margin-top: 5px;
+            margin-bottom: 25px;
+            align-self: flex-start;
+            cursor: pointer;
+        }
+
+        .btn-submit {
+            width: 70%;
+            padding: 10px 0;
+            background-color: #6F4E37;
+            color: white;
+            border: 2px solid #553A26;
+            border-radius: 4px;
+            font-size: 18px;
+            font-family: 'Georgia', serif;
+            cursor: pointer;
+            align-self: center;
+            box-shadow: inset 0 0 0 2px #F5F2EB;
+            z-index: 10;
+        }
+
+        .mascota-container {
+            position: absolute;
+            bottom: -25px;
+            right: -28px;
+            width: 150px;
+            z-index: 99;
+            pointer-events: none;
+        }
+
+        .mascota-img {
+            width: 120%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <button class="back-btn" onclick="window.location.href='index.html'">←</button>
+       
+        <div class="logo-container">
+            <img src="logo_completo.png" alt="Uni-Bocado Logo" class="logo-img">
+        </div>
+
+        <form class="form-container" id="loginForm">
+            <label for="correo">Correo</label>
+            <input type="email" id="correo" class="input-box" required>
+
+            <label for="contrasena">Contraseña</label>
+            <input type="password" id="contrasena" class="input-box" required>
+
+            <a class="forgot-link">¿Olvidaste tu contraseña?</a>
+           
+            <button type="submit" class="btn-submit" id="btnEntrar">Entrar</button>
+        </form>
+
+        <div class="mascota-container">
+            <img src="ratoncito.png" alt="Ratoncito Chef" class="mascota-img">
+        </div>
+    </div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async function(event) {
+    event.preventDefault();
+    const correo = document.getElementById('correo').value.trim();
+    const contrasena = document.getElementById('contrasena').value; // Sin trim para conservar espacios válidos
+
+    if (!correo || !contrasena) {
+        return Swal.fire('Atención', 'Llena todos los campos', 'warning');
+    }
+
+    try {
+        const respuesta = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({correo, contrasena})
+        });
+
+        const resultado = await respuesta.json();
+
+        if(respuesta.ok){
+            localStorage.setItem('usuario', JSON.stringify(resultado.usuario));
+            Swal.fire('¡Bienvenido!', resultado.mensaje, 'success').then(() => {
+                window.location.href = 'inicio.html';
+            });
+        }else{
+            Swal.fire('Error', resultado.error, 'error');
+        }
+    } catch (error) {
+        console.error("Error en petición login:", error);
+        Swal.fire('Error', 'No se pudo conectar con el servidor', 'error');
+    }
+});
+</script>
+</body>
+</html>
