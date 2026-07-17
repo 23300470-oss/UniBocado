@@ -586,7 +586,7 @@ let pedidoActual = null;
 let intervalEstado = null;
 
 const TITULOS = { home: 'Uni-Bocado', menu: '← Menú', checkout: 'Tu Pedido', estado: 'Estado del Pedido' };
-const VISTAS_CON_BACK = ['menu', 'checkout'];
+const VISTAS_CON_BACK = ['menu', 'checkout', 'estado'];
 
 // ─────────────────────────────────────────
 // NAVEGACIÓN
@@ -606,6 +606,7 @@ function irA(vista) {
 document.getElementById('btnBack').addEventListener('click', () => {
     if (vistaActual === 'checkout') { irA('menu'); return; }
     if (vistaActual === 'menu') { irA('home'); return; }
+    if (vistaActual === 'estado') { irA('home'); cargarLocales(); return; }
 });
 
 // Controlador para el botón de pedido activo en el header
@@ -982,6 +983,13 @@ function mostrarEstadoPedido(estado) {
         `;
         stepper.appendChild(div);
     });
+
+    const btnNuevo = document.getElementById('btnNuevoPedido');
+    if (estado === 'Entregado') {
+        btnNuevo.textContent = 'Hacer otro pedido';
+    } else {
+        btnNuevo.textContent = 'Volver al Inicio (Seguir navegando)';
+    }
 }
 
 function iniciarPollingEstado(id_pedido) {
@@ -1011,14 +1019,21 @@ function iniciarPollingEstado(id_pedido) {
 }
 
 document.getElementById('btnNuevoPedido').addEventListener('click', () => {
-    if (intervalEstado) clearInterval(intervalEstado);
-    pedidoActual = null;
-    localStorage.removeItem('pedidoActual');
-    actualizarStatusHeader();
-    irA('home');
-    cargarLocales();
-    document.getElementById('btnConfirmar').disabled = false;
-    document.getElementById('btnConfirmar').textContent = 'Confirmar pedido';
+    if (pedidoActual && (pedidoActual.estado_actual === 'En cocina' || pedidoActual.estado_actual === 'Listo')) {
+        // Solo volvemos al inicio, el pedido sigue activo y el polling sigue corriendo en segundo plano
+        irA('home');
+        cargarLocales();
+    } else {
+        // Pedido ya entregado: limpiamos todo
+        if (intervalEstado) clearInterval(intervalEstado);
+        pedidoActual = null;
+        localStorage.removeItem('pedidoActual');
+        actualizarStatusHeader();
+        irA('home');
+        cargarLocales();
+        document.getElementById('btnConfirmar').disabled = false;
+        document.getElementById('btnConfirmar').textContent = 'Confirmar pedido';
+    }
 });
 
 // Función para verificar si hay un pedido activo guardado al iniciar
