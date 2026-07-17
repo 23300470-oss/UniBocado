@@ -675,8 +675,15 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">URL de imagen</label>
-                    <input type="text" class="form-input" id="prodFoto" placeholder="ratoncito.png o enlace externo">
+                    <label class="form-label">Imagen del producto</label>
+                    <div id="dropzone" style="border: 2px dashed #D2C8BC; border-radius: 8px; padding: 15px; text-align: center; background: #fff; cursor: pointer; position: relative; transition: border-color 0.2s, background-color 0.2s;">
+                        <input type="file" id="prodFotoFile" accept="image/*" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
+                        <div id="dropzoneText" style="color: #7A6F68; font-size: 13px;">
+                            📁 Arrastra una imagen aquí o <span style="color: #6F4E37; font-weight: 600;">selecciona un archivo</span>
+                        </div>
+                        <img id="previewFoto" src="" alt="Vista previa" style="display: none; max-height: 80px; margin: 10px auto 0; border-radius: 8px; object-fit: cover;">
+                    </div>
+                    <input type="hidden" id="prodFoto" value="">
                 </div>
                 <div class="disponible-row">
                     <span class="disponible-label">¿Disponible?</span>
@@ -1039,9 +1046,27 @@ function abrirFormProducto(prod) {
     document.getElementById('prodDescripcion').value = prod ? (prod.descripcion || '') : '';
     document.getElementById('prodPrecio').value = prod ? prod.precio : '';
     document.getElementById('prodCategoria').value = prod ? prod.id_categoria : '';
-    document.getElementById('prodFoto').value = prod ? (prod.foto_url || '') : '';
     document.getElementById('prodDisponible').checked = prod ? Boolean(prod.disponible) : true;
     document.getElementById('btnGuardarProd').textContent = prod ? 'Guardar Cambios' : 'Agregar Producto';
+
+    // Manejo de la previsualización e inputs de imagen
+    const fileInput = document.getElementById('prodFotoFile');
+    fileInput.value = ''; // Limpiar selector
+    const previewFoto = document.getElementById('previewFoto');
+    const hiddenFotoInput = document.getElementById('prodFoto');
+    const dropzoneText = document.getElementById('dropzoneText');
+
+    if (prod && prod.foto_url) {
+        hiddenFotoInput.value = prod.foto_url;
+        previewFoto.src = prod.foto_url;
+        previewFoto.style.display = 'block';
+        dropzoneText.innerHTML = '📁 Imagen actual. Arrastra una nueva para cambiarla';
+    } else {
+        hiddenFotoInput.value = '';
+        previewFoto.src = '';
+        previewFoto.style.display = 'none';
+        dropzoneText.innerHTML = '📁 Arrastra una imagen aquí o <span style="color: #6F4E37; font-weight: 600;">selecciona un archivo</span>';
+    }
 }
 
 // Guardar producto (crear o editar)
@@ -1093,6 +1118,70 @@ document.getElementById('formProducto').addEventListener('submit', async functio
         Swal.fire('Error', 'No se pudo conectar con el servidor.', 'error');
     }
 });
+
+// ─────────────────────────────────────────
+// DRAG & DROP Y SELECCIÓN DE IMÁGENES
+// ─────────────────────────────────────────
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('prodFotoFile');
+const previewFoto = document.getElementById('previewFoto');
+const hiddenFotoInput = document.getElementById('prodFoto');
+const dropzoneText = document.getElementById('dropzoneText');
+
+// Prevenir comportamientos por defecto
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, e => e.preventDefault(), false);
+    dropzone.addEventListener(eventName, e => e.stopPropagation(), false);
+});
+
+// Estilos visuales al arrastrar
+['dragenter', 'dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, () => {
+        dropzone.style.borderColor = '#6F4E37';
+        dropzone.style.backgroundColor = '#F5F2EB';
+    }, false);
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, () => {
+        dropzone.style.borderColor = '#D2C8BC';
+        dropzone.style.backgroundColor = '#fff';
+    }, false);
+});
+
+// Manejar archivos arrastrados
+dropzone.addEventListener('drop', e => {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files.length) {
+        fileInput.files = files;
+        manejarArchivo(files[0]);
+    }
+});
+
+// Manejar selección por click
+fileInput.addEventListener('change', function() {
+    if (this.files.length) {
+        manejarArchivo(this.files[0]);
+    }
+});
+
+function manejarArchivo(file) {
+    if (!file.type.startsWith('image/')) {
+        Swal.fire('Error', 'Por favor selecciona únicamente archivos de imagen.', 'error');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = function() {
+        const base64Data = reader.result;
+        hiddenFotoInput.value = base64Data;
+        previewFoto.src = base64Data;
+        previewFoto.style.display = 'block';
+        dropzoneText.innerHTML = '📁 ¡Imagen cargada! Arrastra otra para cambiarla';
+    };
+}
 
 // ─────────────────────────────────────────
 // PERFIL
