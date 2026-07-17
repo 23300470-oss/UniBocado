@@ -11,13 +11,26 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
-// Configuración del cliente oficial de Supabase (conecta por HTTPS, sin problemas de red)
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY
-);
+let supabase;
+if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+    supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_ANON_KEY
+    );
+    console.log('✅ Cliente de Supabase iniciado correctamente.');
+} else {
+    console.warn('⚠️ Advertencia: SUPABASE_URL o SUPABASE_ANON_KEY no están definidas en las variables de entorno.');
+}
 
-console.log('✅ Cliente de Supabase iniciado correctamente.');
+// Middleware para verificar la inicialización de Supabase y devolver JSON amigable
+app.use('/api', (req, res, next) => {
+    if (!supabase) {
+        return res.status(500).json({
+            error: 'El servidor de Vercel no ha cargado tus variables de entorno de Supabase. Por favor, asegúrate de haber añadido SUPABASE_URL y SUPABASE_ANON_KEY en la configuración de Vercel y haz un Redeploy de tu proyecto.'
+        });
+    }
+    next();
+});
 
 // ==========================================
 // ENDPOINTS PARA ESTUDIANTES
